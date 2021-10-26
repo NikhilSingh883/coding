@@ -5,15 +5,35 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-public class MinIndexedPQ<T extends Comparable<T>> {
+public class MinIndexedDHeap<T extends Comparable<T>> {
 
+  // Current number of elements in the heap.
   private int sz;
-  private final int N,D;
-  private final int[] ch, par,pm,im;
 
-  public final Object[] val;
+  // Maximum number of elements in the heap.
+  private final int N;
 
-  public MinIndexedPQ(int degree, int maxSize) {
+  // The degree of every node in the heap.
+  private final int D;
+
+  // Lookup arrays to track the child/parent indexes of each node.
+  private final int[] child, parent;
+
+  // The Position Map (pm) maps Key Indexes (ki) to where the position of that
+  // key is represented in the priority queue in the domain [0, sz).
+  public final int[] pm;
+
+  // The Inverse Map (im) stores the indexes of the keys in the range
+  // [0, sz) which make up the priority queue. It should be noted that
+  // 'im' and 'pm' are inverses of each other, so: pm[im[i]] = im[pm[i]] = i
+  public final int[] im;
+
+  // The values associated with the keys. It is very important  to note
+  // that this array is indexed by the key indexes (aka 'ki').
+  public final Object[] values;
+
+  // Initializes a D-ary heap with a maximum capacity of maxSize.
+  public MinIndexedDHeap(int degree, int maxSize) {
     if (maxSize <= 0) throw new IllegalArgumentException("maxSize <= 0");
 
     D = max(2, degree);
@@ -21,13 +41,13 @@ public class MinIndexedPQ<T extends Comparable<T>> {
 
     im = new int[N];
     pm = new int[N];
-    ch = new int[N];
-    par = new int[N];
-    val = new Object[N];
+    child = new int[N];
+    parent = new int[N];
+    values = new Object[N];
 
     for (int i = 0; i < N; i++) {
-      par[i] = (i - 1) / D;
-      ch[i] = i * D + 1;
+      parent[i] = (i - 1) / D;
+      child[i] = i * D + 1;
       pm[i] = im[i] = -1;
     }
   }
@@ -56,9 +76,10 @@ public class MinIndexedPQ<T extends Comparable<T>> {
     return minki;
   }
 
+  @SuppressWarnings("unchecked")
   public T peekMinValue() {
     isNotEmptyOrThrow();
-    return (T) val[im[0]];
+    return (T) values[im[0]];
   }
 
   public T pollMinValue() {
@@ -72,47 +93,79 @@ public class MinIndexedPQ<T extends Comparable<T>> {
     valueNotNullOrThrow(value);
     pm[ki] = sz;
     im[sz] = ki;
-    val[ki] = value;
+    values[ki] = value;
     swim(sz++);
   }
 
-
+  @SuppressWarnings("unchecked")
   public T valueOf(int ki) {
     keyExistsOrThrow(ki);
-    return (T) val[ki];
+    return (T) values[ki];
   }
 
-
+  @SuppressWarnings("unchecked")
   public T delete(int ki) {
     keyExistsOrThrow(ki);
     final int i = pm[ki];
     swap(i, --sz);
     sink(i);
     swim(i);
-    T value = (T) val[ki];
-    val[ki] = null;
+    T value = (T) values[ki];
+    values[ki] = null;
     pm[ki] = -1;
     im[sz] = -1;
     return value;
   }
 
+  @SuppressWarnings("unchecked")
+  public T update(int ki, T value) {
+    keyExistsAndValueNotNullOrThrow(ki, value);
+    final int i = pm[ki];
+    T oldValue = (T) values[ki];
+    values[ki] = value;
+    sink(i);
+    swim(i);
+    return oldValue;
+  }
+
+  // Strictly decreases the value associated with 'ki' to 'value'
+  public void decrease(int ki, T value) {
+    keyExistsAndValueNotNullOrThrow(ki, value);
+    if (less(value, values[ki])) {
+      values[ki] = value;
+      swim(pm[ki]);
+    }
+  }
+
+  // Strictly increases the value associated with 'ki' to 'value'
+  public void increase(int ki, T value) {
+    keyExistsAndValueNotNullOrThrow(ki, value);
+    if (less(values[ki], value)) {
+      values[ki] = value;
+      sink(pm[ki]);
+    }
+  }
+
+  /* Helper functions */
+
   private void sink(int i) {
-    for (int j = minch(i); j != -1; ) {
+    for (int j = minChild(i); j != -1; ) {
       swap(i, j);
       i = j;
-      j = minch(i);
+      j = minChild(i);
     }
   }
 
   private void swim(int i) {
-    while (less(i, par[i])) {
-      swap(i, par[i]);
-      i = par[i];
+    while (less(i, parent[i])) {
+      swap(i, parent[i]);
+      i = parent[i];
     }
   }
 
-  private int minch(int i) {
-    int index = -1, from = ch[i], to = min(sz, from + D);
+  // From the parent node at index i find the minimum child below it
+  private int minChild(int i) {
+    int index = -1, from = child[i], to = min(sz, from + D);
     for (int j = from; j < to; j++) if (less(j, i)) index = i = j;
     return index;
   }
@@ -125,12 +178,13 @@ public class MinIndexedPQ<T extends Comparable<T>> {
     im[j] = tmp;
   }
 
-
+  // Tests if the value of node i < node j
+  @SuppressWarnings("unchecked")
   private boolean less(int i, int j) {
-    return ((Comparable<? super T>) val[im[i]]).compareTo((T) val[im[j]]) < 0;
+    return ((Comparable<? super T>) values[im[i]]).compareTo((T) values[im[j]]) < 0;
   }
 
-
+  @SuppressWarnings("unchecked")
   private boolean less(Object obj1, Object obj2) {
     return ((Comparable<? super T>) obj1).compareTo((T) obj2) < 0;
   }
@@ -141,6 +195,8 @@ public class MinIndexedPQ<T extends Comparable<T>> {
     for (int i = 0; i < sz; i++) lst.add(im[i]);
     return lst.toString();
   }
+
+  /* Helper functions to make the code more readable. */
 
   private void isNotEmptyOrThrow() {
     if (isEmpty()) throw new NoSuchElementException("Priority queue underflow");
@@ -164,14 +220,16 @@ public class MinIndexedPQ<T extends Comparable<T>> {
       throw new IllegalArgumentException("Key index out of bounds; received: " + ki);
   }
 
-    // Testing
-    
+  /* Test functions */
+
+  // Recursively checks if this heap is a min heap. This method is used
+  // for testing purposes to validate the heap invariant.
   public boolean isMinHeap() {
     return isMinHeap(0);
   }
 
   private boolean isMinHeap(int i) {
-    int from = ch[i], to = min(sz, from + D);
+    int from = child[i], to = min(sz, from + D);
     for (int j = from; j < to; j++) {
       if (!less(i, j)) return false;
       if (!isMinHeap(j)) return false;
